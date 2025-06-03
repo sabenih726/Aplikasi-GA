@@ -88,23 +88,28 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return defaultValue;
   };
 
-  // Sync data across tabs using storage events
+  // Sync data across tabs using storage events with debounce
   const syncFromStorage = () => {
-    const syncedServices = loadFromStorage('queueServices', [
-      { id: "general", name: "Pelayanan Umum", prefix: "A", currentNumber: 0, served: 0, waiting: 0 },
-      { id: "facility", name: "Fasilitas", prefix: "D", currentNumber: 0, served: 0, waiting: 0 },
-    ]);
-    const syncedCounters = loadFromStorage('queueCounters', [
-      { id: 1, name: "Counter 1", status: "active" as const, currentlyServing: null, serviceType: null },
-      { id: 2, name: "Counter 2", status: "active" as const, currentlyServing: null, serviceType: null },
-      { id: 3, name: "Counter 3", status: "inactive" as const, currentlyServing: null, serviceType: null },
-      { id: 4, name: "Counter 4", status: "inactive" as const, currentlyServing: null, serviceType: null },
-    ]);
-    const syncedQueue = loadFromStorage('queueData', []);
+    try {
+      const syncedServices = loadFromStorage('queueServices', [
+        { id: "general", name: "Pelayanan Umum", prefix: "A", currentNumber: 0, served: 0, waiting: 0 },
+        { id: "facility", name: "Fasilitas", prefix: "D", currentNumber: 0, served: 0, waiting: 0 },
+      ]);
+      const syncedCounters = loadFromStorage('queueCounters', [
+        { id: 1, name: "Counter 1", status: "active" as const, currentlyServing: null, serviceType: null },
+        { id: 2, name: "Counter 2", status: "active" as const, currentlyServing: null, serviceType: null },
+        { id: 3, name: "Counter 3", status: "inactive" as const, currentlyServing: null, serviceType: null },
+        { id: 4, name: "Counter 4", status: "inactive" as const, currentlyServing: null, serviceType: null },
+      ]);
+      const syncedQueue = loadFromStorage('queueData', []);
 
-    setServices(syncedServices);
-    setCounters(syncedCounters);
-    setQueue(syncedQueue);
+      // Only update if data actually changed
+      setServices(prev => JSON.stringify(prev) !== JSON.stringify(syncedServices) ? syncedServices : prev);
+      setCounters(prev => JSON.stringify(prev) !== JSON.stringify(syncedCounters) ? syncedCounters : prev);
+      setQueue(prev => JSON.stringify(prev) !== JSON.stringify(syncedQueue) ? syncedQueue : prev);
+    } catch (error) {
+      console.error('Error syncing data from storage:', error);
+    }
   };
 
   // Initial services
@@ -169,10 +174,17 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     window.addEventListener('queueDataChanged', handleQueueDataChange as EventListener);
 
-    // Periodic sync every 5 seconds as fallback
+    // Debounced sync to prevent too many updates
+    let syncTimeout: NodeJS.Timeout;
+    const debouncedSync = () => {
+      clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(syncFromStorage, 500);
+    };
+
+    // Periodic sync every 30 seconds as fallback (reduced frequency)
     const intervalId = setInterval(() => {
-      syncFromStorage();
-    }, 5000);
+      debouncedSync();
+    }, 30000);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
@@ -202,7 +214,7 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     window.dispatchEvent(new CustomEvent('queueDataChanged', { detail: { type: 'queue' } }));
   }, [queue]);
 
-  // Update service waiting counts
+  // Update service waiting counts (with dependency check to prevent infinite loop)
   useEffect(() => {
     const updatedServices = services.map(service => {
       const waitingCount = queue.filter(
@@ -212,8 +224,15 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { ...service, waiting: waitingCount };
     });
     
-    setServices(updatedServices);
-  }, [queue]);
+    // Only update if waiting counts actually changed
+    const hasChanged = services.some((service, index) => 
+      service.waiting !== updatedServices[index].waiting
+    );
+    
+    if (hasChanged) {
+      setServices(updatedServices);
+    }
+  }, [queue, services]);
 
   // Add new ticket to queue
   const addToQueue = (serviceType: string, customerName?: string, purpose?: string, priority: "normal" | "urgent" | "vip" = "normal"): string => {
@@ -265,63 +284,103 @@ export const QueueProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Call next ticket for counter
   const callNext = (counterId: number, serviceType: string): QueueTicket | null => {
-    const nextTicket = queue.find(
-      ticket => ticket.serviceType === serviceType && ticket.status === "waiting"
-    );
-    
-    if (!nextTicket) return null;
-    
-    // Update ticket status
-    setQueue(prev => 
-      prev.map(ticket => 
-        ticket.id === nextTicket.id 
-          ? { ...ticket, status: "serving", counterAssigned: counterId, calledAt: new Date() } 
-          : ticket
-      )
-    );
-    
-    // Update counter
-    setCounters(prev => 
-      prev.map(counter => 
-        counter.id === counterId 
-          ? { ...counter, currentlyServing: nextTicket.number } 
-          : counter
-      )
-    );
-    
-    // Update service statistics
-    setServices(prev => 
-      prev.map(service => 
-        service.id === serviceType
-          ? { ...service, served: service.served + 1 }
-          : service
-      )
-    );
-    
-    return nextTicket;
+    try {
+      // Find next waiting ticket for the service type, sorted by priority and timestamp
+      const waitingTickets = queue
+        .filter(ticket => ticket.serviceType === serviceType && ticket.status === "waiting")
+        .sort((a, b) => {
+          const priorityOrder = { vip: 3, urgent: 2, normal: 1 };
+          const aPriority = priorityOrder[a.priority];
+          const bPriority = priorityOrder[b.priority];
+          
+          if (aPriority !== bPriority) return bPriority - aPriority;
+          return a.timestamp.getTime() - b.timestamp.getTime();
+        });
+      
+      const nextTicket = waitingTickets[0];
+      
+      if (!nextTicket) {
+        console.warn(`No waiting tickets found for service: ${serviceType}`);
+        return null;
+      }
+
+      // Check if counter exists and is active
+      const counter = counters.find(c => c.id === counterId);
+      if (!counter || counter.status !== "active") {
+        console.error(`Counter ${counterId} is not active or doesn't exist`);
+        return null;
+      }
+      
+      // Update ticket status
+      setQueue(prev => 
+        prev.map(ticket => 
+          ticket.id === nextTicket.id 
+            ? { ...ticket, status: "serving" as const, counterAssigned: counterId, calledAt: new Date() } 
+            : ticket
+        )
+      );
+      
+      // Update counter
+      setCounters(prev => 
+        prev.map(counter => 
+          counter.id === counterId 
+            ? { ...counter, currentlyServing: nextTicket.number } 
+            : counter
+        )
+      );
+      
+      console.log(`Successfully called ticket ${nextTicket.number} to counter ${counterId}`);
+      return nextTicket;
+    } catch (error) {
+      console.error('Error calling next ticket:', error);
+      return null;
+    }
   };
 
   // Complete current service at counter
   const completeService = (ticketId: string, notes?: string) => {
-    const ticket = queue.find(t => t.id === ticketId);
-    if (!ticket || ticket.status !== "serving") return;
+    try {
+      const ticket = queue.find(t => t.id === ticketId);
+      if (!ticket) {
+        console.error(`Ticket with ID ${ticketId} not found`);
+        return;
+      }
+      
+      if (ticket.status !== "serving") {
+        console.error(`Ticket ${ticket.number} is not currently being served. Status: ${ticket.status}`);
+        return;
+      }
 
-    // Update ticket
-    setQueue(prev => 
-      prev.map(t => 
-        t.id === ticketId ? { ...t, status: "completed", completedAt: new Date(), notes } : t
-      )
-    );
-
-    // Update counter
-    if (ticket.counterAssigned) {
-      setCounters(prev => 
-        prev.map(counter => 
-          counter.id === ticket.counterAssigned 
-            ? { ...counter, currentlyServing: null } 
-            : counter
+      // Update ticket to completed
+      setQueue(prev => 
+        prev.map(t => 
+          t.id === ticketId ? { ...t, status: "completed" as const, completedAt: new Date(), notes } : t
         )
       );
+
+      // Update counter to clear current serving
+      if (ticket.counterAssigned) {
+        setCounters(prev => 
+          prev.map(counter => 
+            counter.id === ticket.counterAssigned 
+              ? { ...counter, currentlyServing: null } 
+              : counter
+          )
+        );
+        
+        // Update service statistics (increment served count)
+        setServices(prev => 
+          prev.map(service => 
+            service.id === ticket.serviceType
+              ? { ...service, served: service.served + 1 }
+              : service
+          )
+        );
+        
+        console.log(`Service completed for ticket ${ticket.number} at counter ${ticket.counterAssigned}`);
+      }
+    } catch (error) {
+      console.error('Error completing service:', error);
     }
   };
 

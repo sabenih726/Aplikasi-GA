@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 100% 50%; /* Kuning CAT */
+    --foreground: 0 0% 0%; /* Hitam */
+
+    --card: 0 0% 100%; /* Putih */
+    --card-foreground: 0 0% 0%; /* Hitam */
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+
+    --primary: 48 100% 50%; /* Kuning CAT */
+    --primary-foreground: 0 0% 0%; /* Hitam */
+
+    --secondary: 48 100% 50%; /* Kuning CAT */
+    --secondary-foreground: 0 0% 100%; /* Putih */
+
+    --muted: 0 0% 85%;
+    --muted-foreground: 0 0% 20%;
+
+    --accent: 0 0% 20%; /* Abu gelap */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 70%;
+    --input: 0 0% 70%;
+    --ring: 48 100% 50%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar khusus */
+    --sidebar-background: 0 0% 20%;
+    --sidebar-foreground: 0 0% 100%;
+
+    --sidebar-primary: 48 100% 50%;
+    --sidebar-primary-foreground: 0 0% 0%;
+
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 0 0% 100%;
+
+    --sidebar-border: 0 0% 30%;
+    --sidebar-ring: 48 100% 50%;
+  }
+}

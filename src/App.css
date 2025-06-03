@@ -1,0 +1,78 @@
+/* Mengatur tampilan root dengan latar belakang kuning dan teks hitam */
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Gaya untuk gambar logo */
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms ease-in-out;
+}
+
+/* Efek hover pada logo */
+.logo:hover {
+  filter: drop-shadow(0 0 2em hsl(var(--primary)));
+}
+
+/* Efek hover khusus untuk logo React */
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafb);
+}
+
+/* Animasi rotasi logo */
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mengaktifkan animasi spin jika preferensi motion tidak dikurangi */
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+/* Gaya untuk card */
+.card {
+  padding: 2em;
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+}
+
+/* Gaya untuk teks dokumen */
+.read-the-docs {
+  color: hsl(var(--muted-foreground));
+}
+
+/* Logo kecil di header */
+.header-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 50%;
+  margin-right: 10px;
+  transition: transform 300ms ease;
+}
+
+/* Efek hover pada logo header */
+.header-logo:hover {
+  transform: scale(1.1);
+}
+
+/* Judul di header */
+.header-title {
+  font-size: 2rem;
+  font-weight: bold;
+  color: hsl(var(--primary));
+}
